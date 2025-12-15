@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>香港燒烤場位置地圖</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/css/bootstrap.min.css"
+        integrity="sha512-2bBQCjcnw658Lho4nlXJcc6WkV/UxpE/sAokbXPxQNGqmNdQrWqtw26Ns9kFF/yG792pKR1Sx8/Y1Lf1XN4GKA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary-color: #2c7a3e;
+            --secondary-color: #f8f9fa;
+            --accent-color: #e76f51;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            overflow-x: hidden;
+        }
+
+        /* Header styles */
+        .app-header {
+            background-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            font-size: 1.8rem;
+        }
+
+        /* Main layout */
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 70px);
+            padding: 15px;
+            gap: 15px;
+        }
+
+        @media (min-width: 992px) {
+            .main-container {
+                flex-direction: row;
+            }
+        }
+
+        /* Map container */
+        .map-container {
+            flex: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            min-height: 300px;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Sidebar container */
+        .sidebar-container {
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 992px) {
+            .sidebar-container {
+                width: 400px;
+            }
+        }
+
+        /* Sidebar header */
+        .sidebar-header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .locations-count {
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Accordion styles */
+        .accordion-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .accordion {
+            --bs-accordion-border-color: #dee2e6;
+            --bs-accordion-btn-focus-border-color: var(--primary-color);
+            --bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(44, 122, 62, 0.25);
+            --bs-accordion-active-bg: rgba(44, 122, 62, 0.1);
+            --bs-accordion-active-color: var(--primary-color);
+        }
+
+        .accordion-button:not(.collapsed) {
+            background-color: var(--bs-accordion-active-bg);
+            color: var(--bs-accordion-active-color);
+        }
+
+        .location-item {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .location-item:hover {
+            background-color: rgba(44, 122, 62, 0.05);
+        }
+
+        .location-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        .location-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .location-district {
+            font-size: 0.85rem;
+            color: #666;
+            background-color: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+
+        /* Location details */
+        .location-details {
+            font-size: 0.9rem;
+            padding-top: 10px;
+        }
+
+        .detail-row {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: flex-start;
+            font-size: small !important;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            min-width: 120px;
+            color: #555;
+        }
+
+        .detail-value {
+            flex: 1;
+            color: #333;
+        }
+
+        .detail-value a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .detail-value a:hover {
+            text-decoration: underline;
+        }
+
+        /* Map popup styles */
+        .leaflet-popup-content {
+            font-size: 0.9rem;
+            min-width: 250px;
+            font-family: 'Microsoft JhengHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .popup-title {
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+
+        .popup-detail {
+            margin-bottom: 4px;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 10px;
+                height: calc(100vh - 60px);
+            }
+
+            .map-container,
+            .sidebar-container {
+                border-radius: 8px;
+            }
+
+            .location-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+
+            .detail-label {
+                min-width: 100px;
+            }
+        }
+
+        /* Custom scrollbar */
+        .accordion-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .accordion-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .accordion-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .accordion-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Footer */
+        .app-footer {
+            background-color: #333;
+            color: #ddd;
+            text-align: center;
+            padding: 12px;
+            font-size: 0.85rem;
+            margin-top: auto;
+        }
+
+        /* Highlight active location */
+        .accordion-item.active-location {
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .leaflet-marker-icon.active-marker {
+            filter: hue-rotate(120deg) brightness(1.2);
+        }
+
+        /* Loading indicator */
+        #loadingIndicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.9);
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1001;
+        }
+
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            color: var(--primary-color);
+        }
+
+        /* Error message */
+        .error-message {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(231, 111, 81, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            z-index: 1002;
+            max-width: 80%;
+        }
+
+        /* Data source info */
+        .data-source-info {
+            font-size: 0.8rem;
+            color: #666;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header py-3 px-3 px-md-4">
+        <div class="container-fluid">
+            <div class="header-logo">
+                <i class="fas fa-fire logo-icon"></i>
+                <div>
+                    <h1 class="h4 mb-0">香港燒烤場位置地圖</h1>
+                    <p class="mb-0 small opacity-75">康樂及文化事務署燒烤場地互動地圖</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Sidebar with Locations List -->
+        <div class="sidebar-container">
+            <div class="sidebar-header">
+                <h2 class="h5 mb-0">燒烤場位置清單</h2>
+                <span id="locationsCount" class="locations-count">載入中...</span>
+            </div>
+
+            <div class="data-source-info">
+                <i class="fas fa-database me-1"></i>數據來源：香港政府資料一線通
+            </div>
+
+            <div class="accordion-container p-3">
+                <div class="accordion" id="locationsAccordion">
+                    <!-- Locations will be populated here by JavaScript -->
+                    <div class="text-center py-4" id="noDataMessage">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">載入數據中...</span>
+                        </div>
+                        <p class="mt-2">正在載入燒烤場數據...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Container -->
+        <div class="map-container position-relative">
+            <div id="loadingIndicator">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">載入地圖中...</span>
+                </div>
+                <p class="mt-3">正在初始化地圖...</p>
+            </div>
+
+            <div id="errorMessage" class="error-message">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <h5 class="mb-2">數據載入失敗</h5>
+                <p id="errorDetails" class="mb-3">無法從政府開放數據平台獲取數據。</p>
+                <button id="retryButton" class="btn btn-light btn-sm">重試</button>
+            </div>
+
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="app-footer">
+        <div class="container-fluid">
+            <p class="mb-0">
+                香港燒烤場位置地圖 | 使用 LeafletJS 插件構建 | 數據來源: 香港政府開放數據平台 | © 2023 康樂及文化事務署
+            </p>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstrap.bundle.min.js"
+        integrity="sha512-HvOjJrdwNpDbkGJIG2ZNqDlVqMo77qbs4Me4cah0HoDrfhrbA+8SBlZn1KrvAQw7cILLPFJvdwIgphzQmMm+Pw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Application Script -->
+    <script>
+        // 政府開放數據接口URL
+        const DATA_SOURCE_URL = 'https://portal.csdi.gov.hk/server/services/common/lcsd_rcd_1634540957025_61259/MapServer/WFSServer?service=wfs&request=GetFeature&typenames=LCSD_BBQ&outputFormat=geojson';
+
+        // Application state
+        let map = null;
+        let markers = [];
+        let activeLocationId = null;
+        let bbqLocationsData = null;
+
+        // Initialize the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function () {
+            initializeMap();
+            loadDataFromAPI();
+            setupEventListeners();
+        });
+
+        // Initialize Leaflet map
+        function initializeMap() {
+            // 設置適合香港的初始視圖[citation:8]
+            map = L.map('map').setView([22.25, 114.15], 11);
+
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                detectRetina: true
+            }).addTo(map);
+        }
+
+        // 從政府開放數據API加載數據
+        async function loadDataFromAPI() {
+            try {
+                showLoading(true);
+                hideErrorMessage();
+
+                const response = await fetch(DATA_SOURCE_URL);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP錯誤! 狀態碼: ${response.status}`);
+                }
+
+                bbqLocationsData = await response.json();
+
+                if (!bbqLocationsData || !bbqLocationsData.features || bbqLocationsData.features.length === 0) {
+                    throw new Error('API返回的數據格式不正確或沒有數據');
+                }
+
+                // 成功加載數據後，更新UI
+                updateMapWithData();
+                populateLocationsList();
+                hideLoadingIndicator();
+
+            } catch (error) {
+                console.error('加載數據時發生錯誤:', error);
+                showErrorMessage(`無法載入燒烤場數據: ${error.message}`);
+                hideLoadingIndicator();
+            }
+        }
+
+        // 使用API數據更新地圖
+        function updateMapWithData() {
+            // 清除現有標記
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+
+            // 為每個位置添加標記
+            bbqLocationsData.features.forEach(feature => {
+                // GeoJSON使用[經度, 緯度]順序[citation:2]
+                const lng = feature.geometry.coordinates[0];
+                const lat = feature.geometry.coordinates[1];
+                const props = feature.properties;
+
+                // 使用繁體中文屬性
+                const name = props.NameTC || props.NameEN || '未命名位置';
+                const address = props.AddressTC || props.AddressEN || '地址不詳';
+                const district = props.DistrictTC || props.DistrictEN || '區域不詳';
+                const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
+
+                // 創建自定義圖標
+                const bbqIcon = L.divIcon({
+                    html: '<i class="fas fa-fire" style="color: #e76f51; font-size: 20px;"></i>',
+                    className: 'custom-marker-icon',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30],
+                    popupAnchor: [0, -30]
+                });
+
+                // 創建標記[citation:2]
+                const marker = L.marker([lat, lng], {
+                    icon: bbqIcon,
+                    title: name
+                }).addTo(map).bindPopup(createPopupContent(props));
+
+                // 存儲標記引用和ID
+                marker.locationId = props.OBJECTID || props.GmlID || Math.random();
+                markers.push(marker);
+            });
+
+            // 調整地圖範圍以顯示所有標記
+            if (markers.length > 0) {
+                const markerGroup = L.featureGroup(markers);
+                map.fitBounds(markerGroup.getBounds().pad(0.1));
+            }
+
+            // 更新位置計數
+            updateLocationsCount();
+        }
+
+        // 創建地圖彈出窗口內容（繁體中文）
+        function createPopupContent(props) {
+            const name = props.NameTC || props.NameEN || '未命名位置';
+            const address = props.AddressTC || props.AddressEN || '地址不詳';
+            const district = props.DistrictTC || props.DistrictEN || '區域不詳';
+            const facilities = props.FacilityTypeTC || props.FacilityTypeEN || '設施不詳';
+            const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
+
+            return `
+                <div class="popup-title">${name}</div>
+                <div class="popup-detail"><strong>地址:</strong> ${address}</div>
+                <div class="popup-detail"><strong>區域:</strong> ${district}</div>
+                <div class="popup-detail"><strong>設施類型:</strong> ${facilities}</div>
+                <div class="popup-detail"><strong>電話:</strong> ${phone}</div>
+                <div class="popup-detail"><small>點擊查看更多詳情</small></div>
+            `;
+        }
+
+        // 使用API數據填充位置列表（繁體中文）
+        function populateLocationsList() {
+            const accordionContainer = document.getElementById('locationsAccordion');
+            const noDataMessage = document.getElementById('noDataMessage');
+
+            if (!bbqLocationsData || !bbqLocationsData.features || bbqLocationsData.features.length === 0) {
+                if (noDataMessage) {
+                    noDataMessage.innerHTML = '<p class="text-muted">暫無可用的燒烤場數據。</p>';
+                }
+                return;
+            }
+
+            // 隱藏"無數據"消息
+            if (noDataMessage) {
+                noDataMessage.style.display = 'none';
+            }
+
+            // 清除現有內容（保留noDataMessage）
+            Array.from(accordionContainer.children).forEach(child => {
+                if (child.id !== 'noDataMessage') {
+                    accordionContainer.removeChild(child);
+                }
+            });
+
+            // 為每個位置創建折疊項目
+            bbqLocationsData.features.forEach(feature => {
+                const props = feature.properties;
+                const locationId = props.OBJECTID || props.GmlID || Math.random();
+
+                // 使用繁體中文數據
+                const name = props.NameTC || props.NameEN || '未命名位置';
+                const district = props.DistrictTC || props.DistrictEN || '區域不詳';
+                const address = props.AddressTC || props.AddressEN || '地址不詳';
+                const facilities = props.FacilityTypeTC || props.FacilityTypeEN || '設施不詳';
+                const facilityDetails = props.FacilityDetailsTC || props.FacilityDetailsEN || 'N.A.';
+                const openingHours = props.OpeningHoursTC || props.OpeningHoursEN || 'N.A.';
+                const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
+                const website = props.WebsiteTC || props.WebsiteEN || '#';
+                const lastUpdate = props.LASTUPDATE || '更新時間不詳';
+
+                // 創建折疊項目
+                const accordionItem = document.createElement('div');
+                accordionItem.className = 'accordion-item location-item';
+                accordionItem.id = `locationItem${locationId}`;
+
+                // 創建折疊標題和內容
+                const headerId = `locationHeading${locationId}`;
+                const collapseId = `locationCollapse${locationId}`;
+
+                accordionItem.innerHTML = `
+                    <h2 class="accordion-header" id="${headerId}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                            <div class="location-header">
+                                <div class="location-name">${name}</div>
+                                <div class="location-district">${district}</div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="${collapseId}" class="accordion-collapse collapse" aria-labelledby="${headerId}" data-bs-parent="#locationsAccordion">
+                        <div class="accordion-body location-details">
+                            <div class="detail-row">
+                                <div class="detail-label">地址:</div>
+                                <div class="detail-value">${address}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">設施類型:</div>
+                                <div class="detail-value">${facilities}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">設施詳情:</div>
+                                <div class="detail-value">${facilityDetails.replace(/<br\/>/g, '<br>')}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">開放時間:</div>
+                                <div class="detail-value">${openingHours}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">電話:</div>
+                                <div class="detail-value">${phone}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">網站:</div>
+                                <div class="detail-value"><a href="${website}" target="_blank">${website}</a></div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">最後更新:</div>
+                                <div class="detail-value">${lastUpdate}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // 在noDataMessage之前插入新項目
+                accordionContainer.insertBefore(accordionItem, noDataMessage);
+
+                // 添加點擊事件到折疊標題
+                const accordionButton = accordionItem.querySelector('.accordion-button');
+                accordionButton.addEventListener('click', function () {
+                    highlightLocation(locationId);
+
+                    // 將地圖中心定位到此位置
+                    const lng = feature.geometry.coordinates[0];
+                    const lat = feature.geometry.coordinates[1];
+                    map.setView([lat, lng], 14);
+
+                    // 打開標記的彈出窗口
+                    const marker = markers.find(m => m.locationId === locationId);
+                    if (marker) {
+                        marker.openPopup();
+                    }
+                });
+            });
+
+            // 更新位置計數
+            updateLocationsCount();
+        }
+
+        // 更新位置計數顯示
+        function updateLocationsCount() {
+            const count = bbqLocationsData && bbqLocationsData.features ? bbqLocationsData.features.length : 0;
+            document.getElementById('locationsCount').textContent = `${count} 個位置`;
+        }
+
+        // 高亮顯示選中的位置
+        function highlightLocation(locationId) {
+            // 移除所有位置的高亮樣式
+            document.querySelectorAll('.accordion-item').forEach(item => {
+                item.classList.remove('active-location');
+            });
+
+            // 移除所有標記的高亮樣式
+            markers.forEach(marker => {
+                if (marker._icon) {
+                    marker._icon.classList.remove('active-marker');
+                }
+            });
+
+            // 添加高亮樣式到選中的位置
+            const selectedItem = document.getElementById(`locationItem${locationId}`);
+            if (selectedItem) {
+                selectedItem.classList.add('active-location');
+            }
+
+            // 添加高亮樣式到選中的標記
+            const selectedMarker = markers.find(marker => marker.locationId === locationId);
+            if (selectedMarker && selectedMarker._icon) {
+                selectedMarker._icon.classList.add('active-marker');
+            }
+
+            activeLocationId = locationId;
+        }
+
+        // 設置事件監聽器
+        function setupEventListeners() {
+            // 監聽折疊展開事件以更新高亮位置
+            document.addEventListener('show.bs.collapse', function (event) {
+                const collapseId = event.target.id;
+                if (collapseId.startsWith('locationCollapse')) {
+                    const locationId = collapseId.replace('locationCollapse', '');
+                    highlightLocation(locationId);
+                }
+            });
+
+            // 監聽窗口調整大小事件以調整地圖大小[citation:8]
+            window.addEventListener('resize', function () {
+                setTimeout(() => {
+                    if (map) map.invalidateSize();
+                }, 100);
+            });
+
+            // 重試按鈕事件
+            document.getElementById('retryButton').addEventListener('click', function () {
+                loadDataFromAPI();
+            });
+
+            // 移動設備優化：防止地圖上的默認手勢[citation:8]
+            if ('ontouchstart' in window) {
+                document.getElementById('map').addEventListener('touchstart', function (e) {
+                    if (e.touches.length > 1) {
+                        e.preventDefault();
+                    }
+                }, { passive: false });
+            }
+        }
+
+        // 顯示/隱藏加載指示器
+        function showLoading(show) {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (loadingIndicator) {
+                loadingIndicator.style.display = show ? 'flex' : 'none';
+            }
+        }
+
+        // 隱藏加載指示器
+        function hideLoadingIndicator() {
+            showLoading(false);
+        }
+
+        // 顯示錯誤消息
+        function showErrorMessage(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            const errorDetails = document.getElementById('errorDetails');
+
+            if (errorMessage && errorDetails) {
+                errorDetails.textContent = message;
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        // 隱藏錯誤消息
+        function hideErrorMessage() {
+            const errorMessage = document.getElementById('errorMessage');
+            if (errorMessage) {
+                errorMessage.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>

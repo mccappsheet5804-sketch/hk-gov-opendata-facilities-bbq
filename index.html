@@ -136,6 +136,7 @@
         .location-item {
             cursor: pointer;
             transition: all 0.2s;
+            border-left: 3px solid transparent;
         }
 
         .location-item:hover {
@@ -266,10 +267,13 @@
         /* Highlight active location */
         .accordion-item.active-location {
             border-left: 4px solid var(--accent-color);
+            background-color: rgba(231, 111, 81, 0.05);
         }
 
         .leaflet-marker-icon.active-marker {
             filter: hue-rotate(120deg) brightness(1.2);
+            transform: scale(1.2);
+            transition: transform 0.3s ease;
         }
 
         /* Loading indicator */
@@ -317,6 +321,56 @@
             background-color: #f8f9fa;
             border-top: 1px solid #dee2e6;
         }
+
+        /* District accordion styles */
+        .district-accordion .accordion-button {
+            background-color: rgba(44, 122, 62, 0.1);
+            font-weight: 600;
+        }
+
+        .district-accordion .accordion-button:not(.collapsed) {
+            background-color: rgba(44, 122, 62, 0.2);
+        }
+
+        .district-accordion .accordion-body {
+            padding: 0;
+        }
+
+        /* Location item styles */
+        .location-accordion-item .accordion-button {
+            background-color: rgba(248, 249, 250, 0.9);
+            padding-left: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .location-accordion-item .accordion-button:not(.collapsed) {
+            background-color: rgba(248, 249, 250, 1);
+        }
+
+        .location-accordion-item .accordion-body {
+            padding: 0.5rem 1rem;
+        }
+
+        /* Badge styles */
+        .badge-count {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            margin-left: 0.5rem;
+        }
+
+        /* Inner location accordion for proper grouping */
+        .inner-location-accordion {
+            border: none;
+        }
+
+        .inner-location-accordion .accordion-item {
+            border: none;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .inner-location-accordion .accordion-item:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 
@@ -347,9 +401,9 @@
                 <i class="fas fa-database me-1"></i>數據來源：香港政府資料一線通
             </div>
 
-            <div class="accordion-container p-3">
-                <div class="accordion" id="locationsAccordion">
-                    <!-- Locations will be populated here by JavaScript -->
+            <div class="accordion-container p-0">
+                <div class="accordion" id="districtAccordion">
+                    <!-- District Groups will be populated here by JavaScript -->
                     <div class="text-center py-4" id="noDataMessage">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">載入數據中...</span>
@@ -384,7 +438,7 @@
     <div class="app-footer">
         <div class="container-fluid">
             <p class="mb-0">
-                香港燒烤場位置地圖 | 使用 LeafletJS 插件構建 | 數據來源: 香港政府開放數據平台 | © 2023 康樂及文化事務署
+                香港燒烤場位置地圖 | 使用 LeafletJS 插件構建 | 數據來源: 香港政府開放數據平台
             </p>
         </div>
     </div>
@@ -418,7 +472,7 @@
 
         // Initialize Leaflet map
         function initializeMap() {
-            // 設置適合香港的初始視圖[citation:8]
+            // 設置適合香港的初始視圖
             map = L.map('map').setView([22.25, 114.15], 11);
 
             // Add OpenStreetMap tiles
@@ -467,16 +521,12 @@
 
             // 為每個位置添加標記
             bbqLocationsData.features.forEach(feature => {
-                // GeoJSON使用[經度, 緯度]順序[citation:2]
+                const props = feature.properties;
                 const lng = feature.geometry.coordinates[0];
                 const lat = feature.geometry.coordinates[1];
-                const props = feature.properties;
-
-                // 使用繁體中文屬性
                 const name = props.NameTC || props.NameEN || '未命名位置';
                 const address = props.AddressTC || props.AddressEN || '地址不詳';
                 const district = props.DistrictTC || props.DistrictEN || '區域不詳';
-                const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
 
                 // 創建自定義圖標
                 const bbqIcon = L.divIcon({
@@ -487,7 +537,7 @@
                     popupAnchor: [0, -30]
                 });
 
-                // 創建標記[citation:2]
+                // 創建標記
                 const marker = L.marker([lat, lng], {
                     icon: bbqIcon,
                     title: name
@@ -495,6 +545,7 @@
 
                 // 存儲標記引用和ID
                 marker.locationId = props.OBJECTID || props.GmlID || Math.random();
+                marker.featureData = feature;
                 markers.push(marker);
             });
 
@@ -526,9 +577,9 @@
             `;
         }
 
-        // 使用API數據填充位置列表（繁體中文）
+        // 使用API數據填充位置列表（繁體中文）- 按區域分組
         function populateLocationsList() {
-            const accordionContainer = document.getElementById('locationsAccordion');
+            const accordionContainer = document.getElementById('districtAccordion');
             const noDataMessage = document.getElementById('noDataMessage');
 
             if (!bbqLocationsData || !bbqLocationsData.features || bbqLocationsData.features.length === 0) {
@@ -543,104 +594,189 @@
                 noDataMessage.style.display = 'none';
             }
 
-            // 清除現有內容（保留noDataMessage）
-            Array.from(accordionContainer.children).forEach(child => {
-                if (child.id !== 'noDataMessage') {
-                    accordionContainer.removeChild(child);
-                }
-            });
+            // 清除現有內容
+            accordionContainer.innerHTML = '';
 
-            // 為每個位置創建折疊項目
+            // 正確按區域分組數據 - 修復Issue-2
+            const groupedByDistrict = {};
+            
+            // 確保每個位置都被正確分組
             bbqLocationsData.features.forEach(feature => {
                 const props = feature.properties;
-                const locationId = props.OBJECTID || props.GmlID || Math.random();
+                // 獲取區域信息，確保使用正確的字段
+                const district = getDistrictFromFeature(feature);
+                
+                if (!groupedByDistrict[district]) {
+                    groupedByDistrict[district] = [];
+                }
+                
+                groupedByDistrict[district].push(feature);
+            });
 
-                // 使用繁體中文數據
-                const name = props.NameTC || props.NameEN || '未命名位置';
-                const district = props.DistrictTC || props.DistrictEN || '區域不詳';
-                const address = props.AddressTC || props.AddressEN || '地址不詳';
-                const facilities = props.FacilityTypeTC || props.FacilityTypeEN || '設施不詳';
-                const facilityDetails = props.FacilityDetailsTC || props.FacilityDetailsEN || 'N.A.';
-                const openingHours = props.OpeningHoursTC || props.OpeningHoursEN || 'N.A.';
-                const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
-                const website = props.WebsiteTC || props.WebsiteEN || '#';
-                const lastUpdate = props.LASTUPDATE || '更新時間不詳';
+            // console.log('分組結果:', groupedByDistrict); // 調試用
 
-                // 創建折疊項目
-                const accordionItem = document.createElement('div');
-                accordionItem.className = 'accordion-item location-item';
-                accordionItem.id = `locationItem${locationId}`;
+            // 創建區域Accordion項目
+            Object.keys(groupedByDistrict).sort().forEach(districtName => {
+                const districtFeatures = groupedByDistrict[districtName];
 
-                // 創建折疊標題和內容
-                const headerId = `locationHeading${locationId}`;
-                const collapseId = `locationCollapse${locationId}`;
-
-                accordionItem.innerHTML = `
-                    <h2 class="accordion-header" id="${headerId}">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
-                            <div class="location-header">
-                                <div class="location-name">${name}</div>
-                                <div class="location-district">${district}</div>
-                            </div>
-                        </button>
-                    </h2>
-                    <div id="${collapseId}" class="accordion-collapse collapse" aria-labelledby="${headerId}" data-bs-parent="#locationsAccordion">
-                        <div class="accordion-body location-details">
-                            <div class="detail-row">
-                                <div class="detail-label">地址:</div>
-                                <div class="detail-value">${address}</div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">設施類型:</div>
-                                <div class="detail-value">${facilities}</div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">設施詳情:</div>
-                                <div class="detail-value">${facilityDetails.replace(/<br\/>/g, '<br>')}</div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">開放時間:</div>
-                                <div class="detail-value">${openingHours}</div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">電話:</div>
-                                <div class="detail-value">${phone}</div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">網站:</div>
-                                <div class="detail-value"><a href="${website}" target="_blank">${name}</a></div>
-                            </div>
-                            <div class="detail-row">
-                                <div class="detail-label">最後更新:</div>
-                                <div class="detail-value">${lastUpdate}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                // 在noDataMessage之前插入新項目
-                accordionContainer.insertBefore(accordionItem, noDataMessage);
-
-                // 添加點擊事件到折疊標題
-                const accordionButton = accordionItem.querySelector('.accordion-button');
-                accordionButton.addEventListener('click', function () {
-                    highlightLocation(locationId);
-
-                    // 將地圖中心定位到此位置
-                    const lng = feature.geometry.coordinates[0];
-                    const lat = feature.geometry.coordinates[1];
-                    map.setView([lat, lng], 14);
-
-                    // 打開標記的彈出窗口
-                    const marker = markers.find(m => m.locationId === locationId);
-                    if (marker) {
-                        marker.openPopup();
-                    }
-                });
+                // 創建區域Accordion項目
+                const districtItem = createDistrictAccordionItem(districtName, districtFeatures);
+                accordionContainer.appendChild(districtItem);
             });
 
             // 更新位置計數
             updateLocationsCount();
+        }
+
+        // 從feature中獲取區域信息
+        function getDistrictFromFeature(feature) {
+            const props = feature.properties;
+            // 優先使用繁體中文區域信息
+            if (props.DistrictTC && props.DistrictTC !== 'N.A.' && props.DistrictTC.trim() !== '') {
+                return props.DistrictTC;
+            }
+            if (props.DistrictEN && props.DistrictEN !== 'N.A.' && props.DistrictEN.trim() !== '') {
+                return props.DistrictEN;
+            }
+            return '未分類';
+        }
+
+        // 創建區域Accordion項目 - 修復Issue-1
+        function createDistrictAccordionItem(districtName, features) {
+            const districtId = cleanId(`district-${districtName}`);
+            const districtItem = document.createElement('div');
+            districtItem.className = 'accordion-item district-accordion';
+            
+            districtItem.innerHTML = `
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#${districtId}" aria-expanded="false" aria-controls="${districtId}">
+                        <i class="fas fa-map-marker-alt me-2"></i>${districtName}
+                        <span class="badge bg-primary badge-count ms-auto">${features.length}</span>
+                    </button>
+                </h2>
+                <div id="${districtId}" class="accordion-collapse collapse" data-bs-parent="#districtAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="accordion inner-location-accordion" id="${districtId}-locations">
+                            <!-- 位置項目將在此動態生成 -->
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 將區域項目添加到DOM
+            document.getElementById('districtAccordion').appendChild(districtItem);
+            
+            // 填充位置項目
+            const locationsContainer = document.getElementById(`${districtId}-locations`);
+            if (locationsContainer) {
+                // 為每個位置創建Accordion項目
+                features.forEach((feature, index) => {
+                    const locationItem = createLocationAccordionItem(feature, index, districtId);
+                    locationsContainer.appendChild(locationItem);
+                });
+            }
+
+            return districtItem;
+        }
+
+        // 創建位置Accordion項目 - 修復Issue-1
+        function createLocationAccordionItem(feature, index, districtId) {
+            const props = feature.properties;
+            const locationId = props.OBJECTID || props.GmlID || `loc-${Date.now()}-${index}`;
+            
+            // 使用繁體中文數據
+            const name = props.NameTC || props.NameEN || '未命名位置';
+            const district = getDistrictFromFeature(feature);
+            const address = props.AddressTC || props.AddressEN || '地址不詳';
+            const facilities = props.FacilityTypeTC || props.FacilityTypeEN || '設施不詳';
+            const facilityDetails = props.FacilityDetailsTC || props.FacilityDetailsEN || 'N.A.';
+            const openingHours = props.OpeningHoursTC || props.OpeningHoursEN || 'N.A.';
+            const phone = props.TelephoneTC || props.TelephoneEN || 'N.A.';
+            const website = props.WebsiteTC || props.WebsiteEN || '#';
+            const lastUpdate = props.LASTUPDATE || '更新時間不詳';
+
+            // 創建位置Accordion項目
+            const accordionItem = document.createElement('div');
+            accordionItem.className = 'accordion-item location-accordion-item';
+            accordionItem.id = `locationItem${locationId}`;
+
+            // 創建折疊標題和內容 - 修復：移除data-bs-parent以解決Issue-1
+            const headerId = `locationHeading${locationId}`;
+            const collapseId = `locationCollapse${locationId}`;
+
+            accordionItem.innerHTML = `
+                <h2 class="accordion-header" id="${headerId}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                        <i class="fas fa-fire me-2"></i>${address}
+                    </button>
+                </h2>
+                <div id="${collapseId}" class="accordion-collapse collapse">
+                    <div class="accordion-body location-details">
+                        <div class="detail-row">
+                            <div class="detail-label">名稱:</div>
+                            <div class="detail-value">${name}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">地址:</div>
+                            <div class="detail-value">${address}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">區域:</div>
+                            <div class="detail-value">${district}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">設施類型:</div>
+                            <div class="detail-value">${facilities}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">設施詳情:</div>
+                            <div class="detail-value">${facilityDetails.replace(/<br\/>/g, '<br>')}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">開放時間:</div>
+                            <div class="detail-value">${openingHours}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">電話:</div>
+                            <div class="detail-value">${phone}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">網站:</div>
+                            <div class="detail-value"><a href="${website}" target="_blank">${name}</a></div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">最後更新:</div>
+                            <div class="detail-value">${lastUpdate}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 添加點擊事件
+            const accordionButton = accordionItem.querySelector('.accordion-button');
+            accordionButton.addEventListener('click', function () {
+                highlightLocation(locationId);
+
+                // 將地圖中心定位到此位置
+                const lng = feature.geometry.coordinates[0];
+                const lat = feature.geometry.coordinates[1];
+                map.setView([lat, lng], 14);
+
+                // 打開標記的彈出窗口
+                const marker = markers.find(m => m.locationId === locationId);
+                if (marker) {
+                    marker.openPopup();
+                }
+            });
+
+            return accordionItem;
+        }
+
+        // 清理ID中的特殊字符
+        function cleanId(text) {
+            return text;
         }
 
         // 更新位置計數顯示
@@ -667,6 +803,17 @@
             const selectedItem = document.getElementById(`locationItem${locationId}`);
             if (selectedItem) {
                 selectedItem.classList.add('active-location');
+                
+                // 自動展開父級區域accordion
+                const districtCollapse = selectedItem.closest('[id^="district-"]');
+                if (districtCollapse && !districtCollapse.classList.contains('show')) {
+                    const districtId = districtCollapse.id;
+                    const districtButton = document.querySelector(`[data-bs-target="#${districtId}"]`);
+                    if (districtButton) {
+                        const bsCollapse = new bootstrap.Collapse(districtCollapse);
+                        bsCollapse.show();
+                    }
+                }
             }
 
             // 添加高亮樣式到選中的標記
@@ -689,7 +836,7 @@
                 }
             });
 
-            // 監聽窗口調整大小事件以調整地圖大小[citation:8]
+            // 監聽窗口調整大小事件以調整地圖大小
             window.addEventListener('resize', function () {
                 setTimeout(() => {
                     if (map) map.invalidateSize();
@@ -701,7 +848,7 @@
                 loadDataFromAPI();
             });
 
-            // 移動設備優化：防止地圖上的默認手勢[citation:8]
+            // 移動設備優化：防止地圖上的默認手勢
             if ('ontouchstart' in window) {
                 document.getElementById('map').addEventListener('touchstart', function (e) {
                     if (e.touches.length > 1) {
@@ -744,5 +891,4 @@
         }
     </script>
 </body>
-
 </html>
